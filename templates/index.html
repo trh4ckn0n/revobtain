@@ -1,67 +1,97 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>trhacknon Reverse Shell Listener</title>
-    <style>
-        body {
-            background-color: #0d0d0d;
-            color: #00ff99;
-            font-family: monospace;
-            padding: 20px;
-        }
-        h1 { color: #00ffff; }
-        input, button {
-            background: #111;
-            border: 1px solid #00ff99;
-            color: #00ff99;
-            padding: 10px;
-            margin: 5px;
-        }
-        pre {
-            background: #000;
-            border: 1px dashed #00ff99;
-            padding: 10px;
-            white-space: pre-wrap;
-            margin-top: 15px;
-        }
-    </style>
+<meta charset="UTF-8" />
+<title>trhacknon Reverse Shell Listener</title>
+<style>
+  body {
+    background-color: #0f0f0f;
+    color: #0fff0f;
+    font-family: monospace, monospace;
+    padding: 20px;
+  }
+  label, input, button {
+    font-size: 1.1em;
+  }
+  input[type="text"], input[type="number"] {
+    background: #222;
+    color: #0fff0f;
+    border: 1px solid #0fff0f;
+    padding: 5px;
+    width: 200px;
+    margin-right: 10px;
+  }
+  button {
+    background: #0f0;
+    border: none;
+    color: #000;
+    padding: 8px 15px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #0b0;
+  }
+  #status {
+    white-space: pre-wrap;
+    background: #111;
+    border: 1px solid #0fff0f;
+    padding: 10px;
+    margin-top: 15px;
+    height: 250px;
+    overflow-y: scroll;
+  }
+</style>
 </head>
 <body>
-    <h1>trhacknon Reverse Shell Listener</h1>
-    <p>Utilisez cette interface pour écouter les connexions entrantes (reverse shell).</p>
 
-    <label>Port :</label>
-    <input type="number" id="port" value="4444">
-    <label>Commande après connexion :</label>
-    <input type="text" id="cmd" value="id">
-    <button onclick="startListener()">Démarrer le Listener</button>
+<h1># trhacknon Reverse Shell Listener</h1>
+<p>Utilisez cette interface pour écouter les connexions entrantes (reverse shell).</p>
 
-    <pre id="status">Statut : en attente...</pre>
+<form id="listenerForm">
+  <label for="port">Port :</label>
+  <input type="number" id="port" name="port" value="4444" min="1" max="65535" required />
+  <label for="command">Commande après connexion :</label>
+  <input type="text" id="command" name="command" value="id" required />
+  <button type="submit">Démarrer le Listener</button>
+</form>
 
-    <script>
-        function startListener() {
-            const port = document.getElementById("port").value;
-            const command = document.getElementById("cmd").value;
+<div id="status">Status affiché ici...</div>
 
-            fetch("/start_listener", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({port: parseInt(port), command: command})
-            })
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById("status").textContent = data.status;
-            });
-        }
+<script>
+  const form = document.getElementById('listenerForm');
+  const statusDiv = document.getElementById('status');
+  let intervalId;
 
-        setInterval(() => {
-            fetch("/listener_status")
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById("status").textContent = data.status;
-                });
-        }, 3000);
-    </script>
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    statusDiv.textContent = "Démarrage du listener...";
+    clearInterval(intervalId);
+
+    const port = document.getElementById('port').value;
+    const command = document.getElementById('command').value;
+
+    fetch('/start_listener', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({port: port, command: command})
+    })
+    .then(res => res.json())
+    .then(data => {
+      statusDiv.textContent = data.status;
+      // Rafraîchir le status toutes les secondes
+      intervalId = setInterval(() => {
+        fetch('/listener_status')
+          .then(res => res.json())
+          .then(data => {
+            statusDiv.textContent = data.status;
+          });
+      }, 1000);
+    })
+    .catch(err => {
+      statusDiv.textContent = "Erreur : " + err;
+    });
+  });
+</script>
+
 </body>
 </html>
